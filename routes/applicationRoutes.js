@@ -1,6 +1,7 @@
-const router = require("express").Router();
+const express = require("express");
+const router = express.Router();
 
-const uploadResume = require("../middleware/uploadResume");
+const upload = require("../middleware/uploadResume");
 
 const {
   applyJob,
@@ -8,10 +9,23 @@ const {
   deleteApplication,
 } = require("../controllers/applicationController");
 
-router.post("/", uploadResume.single("resume"), applyJob);
+// ======================
+// APPLY JOB (WITH RESUME UPLOAD)
+// ======================
+router.post(
+  "/",
+  upload.single("resume"),
+  applyJob
+);
 
+// ======================
+// GET ALL APPLICATIONS
+// ======================
 router.get("/", getApplications);
 
+// ======================
+// DELETE APPLICATION
+// ======================
 router.delete("/:id", deleteApplication);
 
 module.exports = router;

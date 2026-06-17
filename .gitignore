@@ -1,4 +1,21 @@
+# dependencies
+node_modules/
+
+# env file (VERY IMPORTANT)
 .env
-.env.*
-node_modules
-uploads/resumes
+
+# logs
+logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# uploads (optional)
+uploads/
+
+# build
+dist/
+build/

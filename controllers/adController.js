@@ -1,105 +1,116 @@
-const db = require("../config/db");
+const { createClient } = require("@supabase/supabase-js");
 
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+// =====================
 // GET ADS
-exports.getAds = (req,res)=>{
+// =====================
+exports.getAds = async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("ads")
+      .select("*")
+      .order("id", { ascending: false });
 
-const sql="SELECT * FROM ads ORDER BY id DESC";
+    if (error) {
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
 
-db.query(sql,(err,result)=>{
-
-if(err){
-return res.status(500).json({
-success:false,
-message:err.message
-});
-}
-
-res.json({
-success:true,
-data:result
-});
-
-});
-
+    res.json({
+      success: true,
+      data,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
 };
 
-
+// =====================
 // ADD AD
-exports.addAd=(req,res)=>{
+// =====================
+exports.addAd = async (req, res) => {
+  try {
+    const {
+      title,
+      subtitle,
+      description,
+      button_text,
+      bg_color,
+    } = req.body;
 
-const{
-title,
-subtitle,
-description,
-button_text,
-bg_color
-}=req.body;
+    const image = req.file
+      ? `/uploads/ads/${req.file.filename}`
+      : null;
 
-const image=req.file
-? `/uploads/ads/${req.file.filename}`
-: null;
+    const { data, error } = await supabase
+      .from("ads")
+      .insert([
+        {
+          title,
+          subtitle,
+          description,
+          button_text,
+          image,
+          bg_color,
+        },
+      ])
+      .select()
+      .single();
 
-const sql=`
-INSERT INTO ads
-(title,subtitle,description,button_text,image,bg_color)
-VALUES(?,?,?,?,?,?)
-`;
+    if (error) {
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
 
-db.query(
-sql,
-[
-title,
-subtitle,
-description,
-button_text,
-image,
-bg_color
-],
-(err,result)=>{
-
-if(err){
-
-return res.status(500).json({
-success:false,
-message:err.message
-});
-
-}
-
-res.json({
-success:true,
-message:"Ad added successfully"
-});
-
-}
-);
-
+    res.json({
+      success: true,
+      message: "Ad added successfully",
+      id: data.id,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
 };
 
-
+// =====================
 // DELETE AD
-exports.deleteAd=(req,res)=>{
+// =====================
+exports.deleteAd = async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from("ads")
+      .delete()
+      .eq("id", req.params.id);
 
-db.query(
-"DELETE FROM ads WHERE id=?",
-[req.params.id],
-(err)=>{
+    if (error) {
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
 
-if(err){
-
-return res.status(500).json({
-success:false,
-message:err.message
-});
-
-}
-
-res.json({
-success:true,
-message:"Ad deleted"
-});
-
-}
-);
-
+    res.json({
+      success: true,
+      message: "Ad deleted",
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
 };

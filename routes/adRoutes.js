@@ -1,21 +1,18 @@
-const router=require("express").Router();
+const router = require("express").Router();
 
-const upload=require("../middleware/uploadMiddleware");
+const upload = require("../middleware/upload"); // ஒரே தடவை மட்டும்
 
 const {
-getAds,
-addAd,
-deleteAd
-}=require("../controllers/adController");
+  getAds,
+  addAd,
+  deleteAd
+} = require("../controllers/adController");
 
-router.get("/",getAds);
+router.get("/", getAds);
 
-router.post(
-"/",
-upload.single("image"),
-addAd
-);
+// image upload
+router.post("/", upload.single("image"), addAd);
 
-router.delete("/:id",deleteAd);
+router.delete("/:id", deleteAd);
 
-module.exports=router;
+module.exports = router;

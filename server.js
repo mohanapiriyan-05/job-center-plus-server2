@@ -2,10 +2,21 @@ require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
-const path = require("path");
 
 const app = express();
 
+// =======================
+// ENV CHECK (SAFE)
+// =======================
+console.log("ENV CHECK:", {
+  PORT: process.env.PORT,
+  SUPABASE_URL: process.env.SUPABASE_URL ? "OK" : "MISSING",
+  SUPABASE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ? "OK" : "MISSING",
+});
+
+// =======================
+// CORS CONFIG
+// =======================
 app.use(
   cors({
     origin: [
@@ -17,13 +28,20 @@ app.use(
   })
 );
 
+// =======================
+// BODY PARSER
+// =======================
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// FILE VIEW
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+// =======================
+// STATIC FILES
+// =======================
+app.use("/uploads", express.static("uploads"));
 
+// =======================
 // ROUTES
+// =======================
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/jobs", require("./routes/jobRoutes"));
 app.use("/api/applications", require("./routes/applicationRoutes"));
@@ -33,14 +51,22 @@ app.use("/api/newsletter", require("./routes/newsletterRoutes"));
 app.use("/api/dashboard", require("./routes/dashboardRoutes"));
 app.use("/api/ads", require("./routes/adRoutes"));
 app.use("/api/companies", require("./routes/companyRoutes"));
-app.use("/uploads", express.static("uploads"));
+
+// =======================
+// ROOT ROUTE
+// =======================
 app.get("/", (req, res) => {
-  res.send("JobCenter+ Backend Running");
+  res.send("JobCenter+ Backend Running 🚀");
 });
 
+// =======================
 // ERROR HANDLER
+// =======================
 app.use(require("./middleware/errorMiddleware"));
 
+// =======================
+// START SERVER
+// =======================
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {

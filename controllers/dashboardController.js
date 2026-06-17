@@ -1,25 +1,47 @@
-const db = require("../config/db");
+const { createClient } = require("@supabase/supabase-js");
 
-exports.getDashboardStats = (req, res) => {
-  const sql = `
-    SELECT
-      (SELECT COUNT(*) FROM jobs) AS jobs,
-      (SELECT COUNT(*) FROM applications) AS applications,
-      (SELECT COUNT(*) FROM applications WHERE status = 'interview') AS interviews,
-      (SELECT COUNT(*) FROM applications WHERE status = 'hired') AS hired
-  `;
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
-  db.query(sql, (err, result) => {
-    if (err) {
-      return res.status(500).json({
-        success: false,
-        message: err.message,
-      });
-    }
+exports.getDashboardStats = async (req, res) => {
+  try {
+    // Jobs count
+    const jobs = await supabase
+      .from("jobs")
+      .select("*", { count: "exact", head: true });
+
+    // Applications count
+    const applications = await supabase
+      .from("applications")
+      .select("*", { count: "exact", head: true });
+
+    // Interview count
+    const interviews = await supabase
+      .from("applications")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "interview");
+
+    // Hired count
+    const hired = await supabase
+      .from("applications")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "hired");
 
     res.json({
       success: true,
-      data: result[0],
+      data: {
+        jobs: jobs.count || 0,
+        applications: applications.count || 0,
+        interviews: interviews.count || 0,
+        hired: hired.count || 0,
+      },
     });
-  });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
 };

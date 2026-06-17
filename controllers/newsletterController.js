@@ -1,50 +1,85 @@
-const db = require("../config/db");
+const { createClient } = require("@supabase/supabase-js");
 
-exports.subscribeNewsletter = (req, res) => {
-  const { email } = req.body;
+// Supabase setup
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
-  if (!email) {
-    return res.status(400).json({
-      success: false,
-      message: "Email is required",
-    });
-  }
+// ================================
+// SUBSCRIBE NEWSLETTER
+// ================================
+exports.subscribeNewsletter = async (req, res) => {
+  try {
+    const { email } = req.body;
 
-  const cleanEmail = email.trim().toLowerCase();
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
 
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+    const cleanEmail = email.trim().toLowerCase();
 
-  if (!emailRegex.test(cleanEmail)) {
-    return res.status(400).json({
-      success: false,
-      message: "Please enter a valid email address",
-    });
-  }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-  const sql =
-    "INSERT INTO newsletter_subscribers (email) VALUES (?)";
+    if (!emailRegex.test(cleanEmail)) {
+      return res.status(400).json({
+        success: false,
+        message: "Please enter a valid email address",
+      });
+    }
 
-  db.query(sql, [cleanEmail], (err, result) => {
-    if (err) {
-      console.log("NEWSLETTER DB ERROR:", err.message);
+    // ================================
+    // CHECK EXISTING EMAIL
+    // ================================
+    const { data: existing, error: fetchError } = await supabase
+      .from("newsletter_subscribers")
+      .select("id")
+      .eq("email", cleanEmail)
+      .maybeSingle();
 
-      if (err.code === "ER_DUP_ENTRY") {
-        return res.status(409).json({
-          success: false,
-          message: "This email is already subscribed",
-        });
-      }
-
+    if (fetchError) {
       return res.status(500).json({
         success: false,
-        message: "Database error occurred",
+        message: fetchError.message,
+      });
+    }
+
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        message: "This email is already subscribed",
+      });
+    }
+
+    // ================================
+    // INSERT NEW SUBSCRIBER
+    // ================================
+    const { data, error } = await supabase
+      .from("newsletter_subscribers")
+      .insert([{ email: cleanEmail }])
+      .select()
+      .single();
+
+    if (error) {
+      return res.status(500).json({
+        success: false,
+        message: error.message,
       });
     }
 
     return res.status(201).json({
       success: true,
       message: "Subscribed successfully!",
-      id: result.insertId,
+      id: data.id,
     });
-  });
+
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
 };

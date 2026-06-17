@@ -1,62 +1,65 @@
 const express = require("express");
 const router = express.Router();
-const db = require("../config/db");
+
 const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
+const { createClient } = require("@supabase/supabase-js");
 
-// Create uploads/companies folder if not exists
-const uploadDir = path.join(__dirname, "../uploads/companies");
+// =======================
+// SUPABASE SETUP
+// =======================
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
+// safety check (VERY IMPORTANT)
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  throw new Error("Missing Supabase env variables");
 }
 
-// Multer Storage
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
-
-  filename: (req, file, cb) => {
-    const fileName = Date.now() + path.extname(file.originalname);
-    cb(null, fileName);
-  },
+// =======================
+// MULTER (memory upload)
+// =======================
+const upload = multer({
+  storage: multer.memoryStorage(),
 });
 
-const upload = multer({ storage });
-
-// =================================
+// =======================
 // GET ALL COMPANIES
-// =================================
-router.get("/", (req, res) => {
-  db.query(
-    "SELECT * FROM companies ORDER BY id DESC",
-    (err, results) => {
-      if (err) {
-        console.error(err);
-        return res.status(500).json(err);
-      }
+// =======================
+router.get("/", async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("companies")
+      .select("*")
+      .order("id", { ascending: false });
 
-      res.json(results);
+    if (error) {
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
     }
-  );
+
+    res.json({
+      success: true,
+      data,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
 });
 
-// =================================
+// =======================
 // ADD COMPANY
-// =================================
-router.post("/", upload.single("logo"), (req, res) => {
+// =======================
+router.post("/", upload.single("logo"), async (req, res) => {
   try {
-    console.log("========== COMPANY ADD ==========");
-    console.log("BODY:", req.body);
-    console.log("FILE:", req.file);
-
-    const name = req.body?.name;
-    const logo = req.file ? req.file.filename : null;
-
-    console.log("NAME:", name);
-    console.log("LOGO:", logo);
+    const { name } = req.body;
+    const file = req.file;
 
     if (!name) {
       return res.status(400).json({
@@ -65,82 +68,114 @@ router.post("/", upload.single("logo"), (req, res) => {
       });
     }
 
-    db.query(
-      "INSERT INTO companies (name, logo) VALUES (?, ?)",
-      [name, logo],
-      (err, result) => {
-        if (err) {
-          console.error("MYSQL ERROR:", err);
+    let logoUrl = null;
 
-          return res.status(500).json({
-            success: false,
-            message: "Database error",
-            error: err.message,
-          });
-        }
+    // =======================
+    // UPLOAD LOGO TO SUPABASE STORAGE
+    // =======================
+    if (file) {
+      const fileName = `${Date.now()}-${file.originalname.replace(/\s+/g, "-")}`;
 
-        console.log("INSERT SUCCESS:", result);
+      const { error: uploadError } = await supabase.storage
+        .from("companies")
+        .upload(fileName, file.buffer, {
+          contentType: file.mimetype,
+        });
 
-        res.status(201).json({
-          success: true,
-          message: "Company added successfully",
-          id: result.insertId,
-          logo,
+      if (uploadError) {
+        return res.status(500).json({
+          success: false,
+          message: uploadError.message,
         });
       }
-    );
-  } catch (error) {
-    console.error("SERVER ERROR:", error);
 
+      const { data: publicData } = supabase.storage
+        .from("companies")
+        .getPublicUrl(fileName);
+
+      logoUrl = publicData.publicUrl;
+    }
+
+    // =======================
+    // INSERT INTO DATABASE
+    // =======================
+    const { data, error } = await supabase
+      .from("companies")
+      .insert([{ name, logo: logoUrl }])
+      .select()
+      .single();
+
+    if (error) {
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      message: "Company added successfully",
+      data,
+    });
+  } catch (err) {
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: err.message,
     });
   }
 });
 
-// =================================
+// =======================
 // DELETE COMPANY
-// =================================
-router.delete("/:id", (req, res) => {
-  const id = req.params.id;
+// =======================
+router.delete("/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
 
-  db.query(
-    "SELECT logo FROM companies WHERE id = ?",
-    [id],
-    (err, results) => {
-      if (err) {
-        return res.status(500).json(err);
-      }
+    // get company first
+    const { data: company, error: fetchError } = await supabase
+      .from("companies")
+      .select("*")
+      .eq("id", id)
+      .single();
 
-      if (results.length > 0 && results[0].logo) {
-        const filePath = path.join(
-          __dirname,
-          "../uploads/companies",
-          results[0].logo
-        );
-
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
-        }
-      }
-
-      db.query(
-        "DELETE FROM companies WHERE id = ?",
-        [id],
-        (err2) => {
-          if (err2) {
-            return res.status(500).json(err2);
-          }
-
-          res.json({
-            success: true,
-            message: "Company deleted successfully",
-          });
-        }
-      );
+    if (fetchError) {
+      return res.status(500).json({
+        success: false,
+        message: fetchError.message,
+      });
     }
-  );
+
+    // delete image from storage (if exists)
+    if (company?.logo) {
+      const fileName = company.logo.split("/").pop();
+
+      await supabase.storage.from("companies").remove([fileName]);
+    }
+
+    // delete DB row
+    const { error: deleteError } = await supabase
+      .from("companies")
+      .delete()
+      .eq("id", id);
+
+    if (deleteError) {
+      return res.status(500).json({
+        success: false,
+        message: deleteError.message,
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Company deleted successfully",
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
 });
 
 module.exports = router;

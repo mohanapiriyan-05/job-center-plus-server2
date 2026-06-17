@@ -1,100 +1,105 @@
-const db = require("../config/db");
+const { createClient } = require("@supabase/supabase-js");
 
-// APPLY JOB + CV SAVE
-exports.applyJob = (req, res) => {
-  const {
-    job_id,
-    job_title,
-    company,
-    name,
-    email,
-    phone,
-    message,
-  } = req.body;
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
-  if (!job_id || !name || !email || !phone) {
-    return res.status(400).json({
-      success: false,
-      message: "Name, email, phone and job are required",
-    });
-  }
+// APPLY JOB
+exports.applyJob = async (req, res) => {
+  try {
+    const { job_id, job_title, company, name, email, phone, message } = req.body;
 
-  const resumePath = req.file
-    ? `/uploads/resumes/${req.file.filename}`
-    : null;
-
-  const sql = `
-    INSERT INTO applications
-    (job_id, job_title, company, name, email, phone, resume, message)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `;
-
-  db.query(
-    sql,
-    [
-      job_id,
-      job_title,
-      company,
-      name,
-      email,
-      phone,
-      resumePath,
-      message,
-    ],
-    (err, result) => {
-      if (err) {
-        console.log("APPLICATION ERROR:", err.message);
-
-        return res.status(500).json({
-          success: false,
-          message: err.message,
-        });
-      }
-
-      res.status(201).json({
-        success: true,
-        message: "Application submitted successfully",
-        id: result.insertId,
-        resume: resumePath,
+    if (!job_id || !name || !email || !phone) {
+      return res.status(400).json({
+        success: false,
+        message: "Name, email, phone and job are required",
       });
     }
-  );
-};
 
-// GET ALL APPLICATIONS
-exports.getApplications = (req, res) => {
-  const sql = "SELECT * FROM applications ORDER BY id DESC";
+    const resumePath = req.file
+      ? `/uploads/resumes/${req.file.filename}`
+      : null;
 
-  db.query(sql, (err, result) => {
-    if (err) {
-      console.log("GET APPLICATION ERROR:", err.message);
+    const { data, error } = await supabase
+      .from("applications")
+      .insert([
+        {
+          job_id,
+          job_title,
+          company,
+          name,
+          email,
+          phone,
+          resume: resumePath,
+          message,
+        },
+      ])
+      .select()
+      .single();
 
+    if (error) {
       return res.status(500).json({
         success: false,
-        message: err.message,
+        message: error.message,
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      message: "Application submitted successfully",
+      id: data.id,
+      resume: resumePath,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
+
+// GET APPLICATIONS
+exports.getApplications = async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("applications")
+      .select("*")
+      .order("id", { ascending: false });
+
+    if (error) {
+      return res.status(500).json({
+        success: false,
+        message: error.message,
       });
     }
 
     res.json({
       success: true,
-      data: result,
+      data,
     });
-  });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
 };
 
 // DELETE APPLICATION
-exports.deleteApplication = (req, res) => {
-  const { id } = req.params;
+exports.deleteApplication = async (req, res) => {
+  try {
+    const { id } = req.params;
 
-  const sql = "DELETE FROM applications WHERE id = ?";
+    const { error } = await supabase
+      .from("applications")
+      .delete()
+      .eq("id", id);
 
-  db.query(sql, [id], (err, result) => {
-    if (err) {
-      console.log("DELETE APPLICATION ERROR:", err.message);
-
+    if (error) {
       return res.status(500).json({
         success: false,
-        message: err.message,
+        message: error.message,
       });
     }
 
@@ -102,5 +107,10 @@ exports.deleteApplication = (req, res) => {
       success: true,
       message: "Application deleted successfully",
     });
-  });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
 };

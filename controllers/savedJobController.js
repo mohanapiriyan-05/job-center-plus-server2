@@ -1,43 +1,166 @@
-const db = require("../config/db");
+const { createClient } = require("@supabase/supabase-js");
 
-const saveJob = (req, res) => {
-  const { user_id, job_id } = req.body;
+// ========================
+// SUPABASE CLIENT
+// ========================
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
-  const sql = "INSERT INTO saved_jobs(user_id, job_id) VALUES(?, ?)";
+// ========================
+// SAVE JOB
+// ========================
+const saveJob = async (req, res) => {
+  try {
+    const { user_id, job_id } = req.body;
 
-  db.query(sql, [user_id, job_id], (err) => {
-    if (err) return res.status(500).json({ success: false, message: err.message });
+    if (!user_id || !job_id) {
+      return res.status(400).json({
+        success: false,
+        message: "user_id and job_id are required",
+      });
+    }
 
-    res.json({ success: true, message: "Job saved successfully" });
-  });
+    // optional: prevent duplicate save
+    const { data: existing } = await supabase
+      .from("saved_jobs")
+      .select("id")
+      .eq("user_id", user_id)
+      .eq("job_id", job_id)
+      .maybeSingle();
+
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        message: "Job already saved",
+      });
+    }
+
+    const { data, error } = await supabase
+      .from("saved_jobs")
+      .insert([{ user_id, job_id }])
+      .select()
+      .single();
+
+    if (error) {
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Job saved successfully",
+      data,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
 };
 
-const getSavedJobs = (req, res) => {
-  const { user_id } = req.params;
+// ========================
+// GET SAVED JOBS
+// ========================
+const getSavedJobs = async (req, res) => {
+  try {
+    const { user_id } = req.params;
 
-  const sql = `
-    SELECT saved_jobs.id AS saved_id, jobs.*
-    FROM saved_jobs
-    JOIN jobs ON saved_jobs.job_id = jobs.id
-    WHERE saved_jobs.user_id = ?
-    ORDER BY saved_jobs.id DESC
-  `;
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        message: "user_id is required",
+      });
+    }
 
-  db.query(sql, [user_id], (err, result) => {
-    if (err) return res.status(500).json({ success: false, message: err.message });
+    const { data, error } = await supabase
+      .from("saved_jobs")
+      .select(`
+        id,
+        user_id,
+        job_id,
+        jobs (
+          id,
+          company,
+          title,
+          location,
+          type,
+          category,
+          days_left,
+          salary,
+          description
+        )
+      `)
+      .eq("user_id", user_id)
+      .order("id", { ascending: false });
 
-    res.json({ success: true, data: result });
-  });
+    if (error) {
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
+    res.json({
+      success: true,
+      data: data || [],
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
 };
 
-const deleteSavedJob = (req, res) => {
-  const { id } = req.params;
+// ========================
+// DELETE SAVED JOB
+// ========================
+const deleteSavedJob = async (req, res) => {
+  try {
+    const { id } = req.params;
 
-  db.query("DELETE FROM saved_jobs WHERE id=?", [id], (err) => {
-    if (err) return res.status(500).json({ success: false, message: err.message });
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "id is required",
+      });
+    }
 
-    res.json({ success: true, message: "Saved job removed" });
-  });
+    const { data, error } = await supabase
+      .from("saved_jobs")
+      .delete()
+      .eq("id", id)
+      .select();
+
+    if (error) {
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
+    if (!data || data.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Saved job not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Saved job removed",
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
 };
 
 module.exports = {
